@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Bot, User, Send, Compass, Code, PenTool, Brain, Mic, Trash2, StopCircle, Volume2, VolumeX } from 'lucide-react';
+import { Bot, User, Send, Compass, Code, PenTool, Brain, Mic, Trash2, StopCircle, Volume2, VolumeX, ImagePlus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { simulateAIResponse } from './aiMock'; // We'll create this module later
 
@@ -20,6 +20,9 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageMimeType, setImageMimeType] = useState(null);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -108,18 +111,42 @@ export default function App() {
     stopSpeaking();
   };
 
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result.split(',')[1];
+        setSelectedImage(base64String);
+        setImageMimeType(file.type);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSend = async (text) => {
     const query = text || inputValue.trim();
-    if (!query) return;
+    if (!query && !selectedImage) return;
 
     // Add user message
-    const userMsg = { id: Date.now(), role: 'user', content: query };
+    const userMsg = {
+      id: Date.now(),
+      role: 'user',
+      content: query,
+      hasImage: !!selectedImage,
+      imagePreview: selectedImage ? `data:${imageMimeType};base64,${selectedImage}` : null
+    };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
+
+    const apiImage = selectedImage;
+    const apiMime = imageMimeType;
+    setSelectedImage(null);
+    setImageMimeType(null);
     setIsTyping(true);
 
     // Simulate AI thinking and responding
-    const aiResponse = await simulateAIResponse(query);
+    const aiResponse = await simulateAIResponse(query, apiImage, apiMime);
 
     setIsTyping(false);
     const newMsg = {
@@ -254,7 +281,12 @@ export default function App() {
                       {m.role === 'ai' ? <Bot size={20} color="white" /> : <User size={20} color="rgba(255,255,255,0.7)" />}
                     </div>
                     <div className="bubble">
-                      {m.content.split('\n').map((line, i) => (
+                      {m.hasImage && (
+                        <div style={{ marginBottom: m.content ? '12px' : '0' }}>
+                          <img src={m.imagePreview} alt="User Upload" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px' }} />
+                        </div>
+                      )}
+                      {m.content && m.content.split('\n').map((line, i) => (
                         <React.Fragment key={i}>
                           {line}
                           {i !== m.content.split('\n').length - 1 && <br />}
@@ -287,6 +319,14 @@ export default function App() {
         {/* Global Input Area fixed at bottom of main view if chat active, or bottom of screen if explore */}
         <div style={{ width: '100%', maxWidth: '900px', marginTop: messages.length === 0 ? '60px' : '0' }}>
           <div className="input-container glass-panel">
+            {selectedImage && (
+              <div style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
+                <img src={`data:${imageMimeType};base64,${selectedImage}`} style={{ height: '40px', borderRadius: '6px' }} alt="Preview" />
+                <button onClick={() => setSelectedImage(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', padding: '4px', borderRadius: '50%', display: 'flex' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
             <textarea
               ref={inputRef}
               className="input-box"
@@ -295,10 +335,20 @@ export default function App() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
-              style={{ paddingRight: '100px' }} // extra space for mic and send
+              style={{ paddingRight: '140px', borderTopLeftRadius: selectedImage ? '0' : '20px', borderTopRightRadius: selectedImage ? '0' : '20px' }} // extra space for mic, image and send
             />
 
             <div style={{ position: 'absolute', right: '12px', bottom: '10px', display: 'flex', gap: '8px' }}>
+              <input
+                type="file"
+                accept="image/*"
+                id="image-upload"
+                style={{ display: 'none' }}
+                onChange={handleImageUpload}
+              />
+              <label htmlFor="image-upload" className="send-btn" style={{ background: 'var(--surface-secondary)', color: 'white', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Upload Image">
+                <ImagePlus size={16} />
+              </label>
               <button
                 className={isListening ? "send-btn pulse-red" : "send-btn"}
                 onClick={toggleListening}
