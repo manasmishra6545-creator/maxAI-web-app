@@ -1,0 +1,180 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Bot, User, Send, Compass, Code, PenTool, Brain } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { simulateAIResponse } from './aiMock'; // We'll create this module later
+
+export default function App() {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const handleSend = async (text) => {
+    const query = text || inputValue.trim();
+    if (!query) return;
+
+    // Add user message
+    const userMsg = { id: Date.now(), role: 'user', content: query };
+    setMessages(prev => [...prev, userMsg]);
+    setInputValue('');
+    setIsTyping(true);
+
+    // Simulate AI thinking and responding
+    const aiResponse = await simulateAIResponse(query);
+    
+    setIsTyping(false);
+    setMessages(prev => [...prev, {
+      id: Date.now() + 1,
+      role: 'ai',
+      content: aiResponse
+    }]);
+    
+    // Auto focus back on input
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const exploreCards = [
+    { icon: <Compass size={24} />, title: "Explain quantum computing", desc: "Break it down in simple terms for a 10 year old.", q: "Explain quantum computing to me like I'm 10." },
+    { icon: <Code size={24} />, title: "Debug my React issue", desc: "Get help fixing useEffect dependency array looping.", q: "Why is my useEffect causing an infinite loop in React?" },
+    { icon: <PenTool size={24} />, title: "Draft a sci-fi story", desc: "Set in a dystopian future where AI is prohibited.", q: "Write a short sci-fi story about a world without AI." },
+    { icon: <Brain size={24} />, title: "Plan a workout routine", desc: "A 4-day split for muscle hypertrophy.", q: "Create a 4-day workout split focused on building muscle." },
+  ];
+
+  return (
+    <div className="app-container">
+      <header>
+        <div className="brand-title">
+          <div className="brand-icon">
+            <Bot color="white" size={20} />
+          </div>
+          max<span className="text-gradient">AI</span>
+        </div>
+      </header>
+
+      <main>
+        {messages.length === 0 ? (
+          <motion.div 
+            className="explore-container"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <h1 className="hero-title">
+              Hello, I'm <span className="text-gradient">maxAI</span>
+            </h1>
+            <p className="hero-subtitle">
+              Your ultimate intelligence nexus. Start a conversation or pick a topic below to explore the limits of my knowledge.
+            </p>
+            
+            <div className="grid-wrapper">
+              {exploreCards.map((card, idx) => (
+                <motion.div 
+                  key={idx} 
+                  className="explore-card"
+                  onClick={() => handleSend(card.q)}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 + 0.3 }}
+                >
+                  <div className="card-icon">
+                    {card.icon}
+                  </div>
+                  <div className="card-title">{card.title}</div>
+                  <div className="card-desc">{card.desc}</div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div 
+            className="chat-layout"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            <div className="messages-area">
+              <AnimatePresence>
+                {messages.map((m) => (
+                  <motion.div 
+                    key={m.id} 
+                    className={`message-row ${m.role}`}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <div className="avatar">
+                      {m.role === 'ai' ? <Bot size={20} color="white" /> : <User size={20} color="rgba(255,255,255,0.7)" />}
+                    </div>
+                    <div className="bubble">
+                      {m.content.split('\n').map((line, i) => (
+                        <React.Fragment key={i}>
+                          {line}
+                          {i !== m.content.split('\n').length - 1 && <br />}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              
+              {isTyping && (
+                <div className="message-row ai">
+                  <div className="avatar">
+                     <Bot size={20} color="white" />
+                  </div>
+                  <div className="bubble" style={{ padding: '12px 16px' }}>
+                    <div className="typing-indicator">
+                      <div className="dot"></div>
+                      <div className="dot"></div>
+                      <div className="dot"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </motion.div>
+        )}
+
+        {/* Global Input Area fixed at bottom of main view if chat active, or bottom of screen if explore */}
+        <div style={{ width: '100%', maxWidth: '900px', marginTop: messages.length === 0 ? '60px' : '0' }}>
+           <div className="input-container glass-panel">
+            <textarea
+              ref={inputRef}
+              className="input-box"
+              placeholder="Ask maxAI anything..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+            />
+            <button 
+              className="send-btn" 
+              onClick={() => handleSend()}
+              disabled={!inputValue.trim() && !isTyping}
+            >
+              <Send size={16} />
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
