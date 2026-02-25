@@ -1,14 +1,27 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Bot, User, Send, Compass, Code, PenTool, Brain } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Bot, User, Send, Compass, Code, PenTool, Brain, Mic, Trash2, StopCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { simulateAIResponse } from './aiMock'; // We'll create this module later
 
 export default function App() {
-  const [messages, setMessages] = useState([]);
+  // Load messages from LocalStorage if available
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('maxAI_history');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  // Auto-save messages to LocalStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('maxAI_history', JSON.stringify(messages));
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -17,6 +30,71 @@ export default function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
+
+  // --- Voice Input (Speech Recognition) ---
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInputValue((prev) => prev + " " + transcript);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } else {
+        alert("Your browser does not support speech recognition.");
+      }
+    }
+  };
+
+  // --- Voice Output (Speech Synthesis) ---
+  const speakResponse = useCallback((text) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Stop any current speech
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.05; // Slightly faster for AI feel
+      utterance.pitch = 1.1; // Slightly higher
+
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+
+      window.speechSynthesis.speak(utterance);
+    }
+  }, []);
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  // --- General Actions ---
+  const clearChat = () => {
+    setMessages([]);
+    stopSpeaking();
+  };
 
   const handleSend = async (text) => {
     const query = text || inputValue.trim();
@@ -30,14 +108,19 @@ export default function App() {
 
     // Simulate AI thinking and responding
     const aiResponse = await simulateAIResponse(query);
-    
+
     setIsTyping(false);
-    setMessages(prev => [...prev, {
+    const newMsg = {
       id: Date.now() + 1,
       role: 'ai',
       content: aiResponse
-    }]);
-    
+    };
+    setMessages(prev => [...prev, newMsg]);
+
+    // Auto-read response if user was recently using voice or just default to read out loud
+    // (Here we'll always read it out unless they stopped it, but you can toggle this)
+    speakResponse(aiResponse);
+
     // Auto focus back on input
     setTimeout(() => {
       inputRef.current?.focus();
@@ -67,11 +150,31 @@ export default function App() {
           </div>
           max<span className="text-gradient">AI</span>
         </div>
+
+        {/* Header Action Buttons */}
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {isSpeaking && (
+            <button
+              onClick={stopSpeaking}
+              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <StopCircle size={16} /> Stop Speaking
+            </button>
+          )}
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              style={{ background: 'rgba(236, 72, 153, 0.1)', border: '1px solid rgba(236, 72, 153, 0.3)', color: '#ec4899', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}
+            >
+              <Trash2 size={16} /> Clear Chat
+            </button>
+          )}
+        </div>
       </header>
 
       <main>
         {messages.length === 0 ? (
-          <motion.div 
+          <motion.div
             className="explore-container"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -83,11 +186,11 @@ export default function App() {
             <p className="hero-subtitle">
               Your ultimate intelligence nexus. Start a conversation or pick a topic below to explore the limits of my knowledge.
             </p>
-            
+
             <div className="grid-wrapper">
               {exploreCards.map((card, idx) => (
-                <motion.div 
-                  key={idx} 
+                <motion.div
+                  key={idx}
                   className="explore-card"
                   onClick={() => handleSend(card.q)}
                   initial={{ opacity: 0, y: 20 }}
@@ -104,7 +207,7 @@ export default function App() {
             </div>
           </motion.div>
         ) : (
-          <motion.div 
+          <motion.div
             className="chat-layout"
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -113,8 +216,8 @@ export default function App() {
             <div className="messages-area">
               <AnimatePresence>
                 {messages.map((m) => (
-                  <motion.div 
-                    key={m.id} 
+                  <motion.div
+                    key={m.id}
                     className={`message-row ${m.role}`}
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -133,11 +236,11 @@ export default function App() {
                   </motion.div>
                 ))}
               </AnimatePresence>
-              
+
               {isTyping && (
                 <div className="message-row ai">
                   <div className="avatar">
-                     <Bot size={20} color="white" />
+                    <Bot size={20} color="white" />
                   </div>
                   <div className="bubble" style={{ padding: '12px 16px' }}>
                     <div className="typing-indicator">
@@ -155,7 +258,7 @@ export default function App() {
 
         {/* Global Input Area fixed at bottom of main view if chat active, or bottom of screen if explore */}
         <div style={{ width: '100%', maxWidth: '900px', marginTop: messages.length === 0 ? '60px' : '0' }}>
-           <div className="input-container glass-panel">
+          <div className="input-container glass-panel">
             <textarea
               ref={inputRef}
               className="input-box"
@@ -164,14 +267,26 @@ export default function App() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
+              style={{ paddingRight: '100px' }} // extra space for mic and send
             />
-            <button 
-              className="send-btn" 
-              onClick={() => handleSend()}
-              disabled={!inputValue.trim() && !isTyping}
-            >
-              <Send size={16} />
-            </button>
+
+            <div style={{ position: 'absolute', right: '12px', bottom: '10px', display: 'flex', gap: '8px' }}>
+              <button
+                className={isListening ? "send-btn pulse-red" : "send-btn"}
+                onClick={toggleListening}
+                style={{ background: isListening ? '#ef4444' : 'var(--surface-secondary)', color: 'white' }}
+                title="Voice Input"
+              >
+                <Mic size={16} />
+              </button>
+              <button
+                className="send-btn"
+                onClick={() => handleSend()}
+                disabled={!inputValue.trim() && !isTyping}
+              >
+                <Send size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </main>
