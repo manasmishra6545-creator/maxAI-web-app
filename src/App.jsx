@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Bot, User, Send, Compass, Code, PenTool, Brain, Mic, Trash2, StopCircle } from 'lucide-react';
+import { Bot, User, Send, Compass, Code, PenTool, Brain, Mic, Trash2, StopCircle, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { simulateAIResponse } from './aiMock'; // We'll create this module later
 
@@ -9,6 +9,13 @@ export default function App() {
     const saved = localStorage.getItem('maxAI_history');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Load Auto-Speak preference
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    const saved = localStorage.getItem('maxAI_autospeak');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -22,6 +29,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('maxAI_history', JSON.stringify(messages));
   }, [messages]);
+
+  // Auto-save Auto-Speak preference
+  useEffect(() => {
+    localStorage.setItem('maxAI_autospeak', JSON.stringify(autoSpeak));
+  }, [autoSpeak]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -119,7 +131,9 @@ export default function App() {
 
     // Auto-read response if user was recently using voice or just default to read out loud
     // (Here we'll always read it out unless they stopped it, but you can toggle this)
-    speakResponse(aiResponse);
+    if (autoSpeak) {
+      speakResponse(aiResponse);
+    }
 
     // Auto focus back on input
     setTimeout(() => {
@@ -153,6 +167,20 @@ export default function App() {
 
         {/* Header Action Buttons */}
         <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => {
+              if (isSpeaking) stopSpeaking();
+              setAutoSpeak(!autoSpeak);
+            }}
+            style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}
+            title={autoSpeak ? "Disable auto-speak" : "Enable auto-speak"}
+          >
+            {autoSpeak ? <Volume2 size={16} /> : <VolumeX size={16} color="#a1a1aa" />}
+            <span style={{ display: 'none' /* hidden for mobile if necessary, or keep visible */ }}>
+              {autoSpeak ? 'Speaking: On' : 'Speaking: Off'}
+            </span>
+          </button>
+
           {isSpeaking && (
             <button
               onClick={stopSpeaking}
